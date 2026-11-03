@@ -4,6 +4,8 @@
    ・チェックや数を変えたときは、その品のカードと上の数字だけ直す。全部を作り直すと押した場所が飛ぶうえ、
      数を打っている途中で＋を押したときに押したボタンが消えて効かなくなるため
    ・右上の「編集」で、名前を直す・並べ替える・消す・よくある品から選んで足す
+     （買い出しのタブでは、買い出し先＝お店を足す・直す・並べ替える・消す）
+   ・品はいつもの買い出し先を1つ持ち、買い出しのタブはお店ごとに並ぶ
    ・消す・買った・まとめて足す・控えから戻す は、全部「元に戻す」を出す */
 (function () {
   'use strict';
@@ -16,12 +18,19 @@
   var EXPORT_EVERY = 30 * 86400000;   // 控えを書き出してから、これだけたったら設定に印を出す
 
   var S = St.load();
-  var ui = { view: 'spice', filter: {} };
+  var ui = { view: 'spice', filter: {}, shop: 'all' };
   try { Object.assign(ui, JSON.parse(localStorage.getItem(UI_KEY) || '{}')); } catch (e) { /* 既定のまま */ }
   if (VIEWS.indexOf(ui.view) < 0) ui.view = 'spice';
   if (!ui.filter || typeof ui.filter !== 'object') ui.filter = {};
   Object.keys(ui.filter).forEach(function (k) { if (FILTERS.indexOf(ui.filter[k]) < 0) ui.filter[k] = 'all'; });
+  if (typeof ui.shop !== 'string') ui.shop = 'all';
   var editing = false;   // 編集中か（覚えない。開き直したらふだんの画面）
+
+  // 買い出し先：はじめの6つを一度だけ入れる（消したものはよみがえらせない）
+  if (!S.meta.shopsSeeded) {
+    St.seedShops(S, SB.SHOPS);
+    St.save(S);
+  }
 
   // 見本：はじめて開いたときは全部写す。もう開いた端末には、新しく足した見本だけ一度だけ足す
   // （前から入っていた見本で、消したものはよみがえらない）
@@ -118,6 +127,13 @@
         '<span class="lq">' + (l.qty > 0 ? fmt(l.qty) + esc(it.unit) : '') + '</span><span class="ll">' + daysLabel(d) + '</span></span>';
     }).join('');
   }
+  function shopTag(it) {
+    var sh = St.shopOf(S, it);
+    return sh ? '<span class="shp-tag">' + esc(sh.name) + '</span>' : '';
+  }
+  function subHtml(it) {
+    return [shopTag(it), esc(it.memo)].filter(Boolean).join(' ');
+  }
   function cardClass(it) {
     return 'card c-' + it.cat + (it.buy > 0 ? ' has-buy' : '') + (it.out ? ' is-out' : '');
   }
@@ -126,7 +142,7 @@
     return '<article class="' + cardClass(it) + '" data-id="' + it.id + '">' +
       '<div class="card-top"><button type="button" class="name" data-act="edit">' + esc(it.name) + '</button>' +
       '<div class="bds">' + badges(it, today) + '</div></div>' +
-      '<div class="sub">' + esc(it.memo) + '</div>' +
+      '<div class="sub">' + subHtml(it) + '</div>' +
       (it.track ? '<button type="button" class="lots" data-act="edit"' + (it.out ? ' hidden' : '') + '>' + lotsHtml(it, today) + '</button>' : '') +
       '<div class="nums">' +
         '<div class="nb"><span class="nl">在庫</span>' +
@@ -217,6 +233,8 @@
     var sub = [];
     if (it.unit) sub.push('単位 ' + esc(it.unit));
     if (it.track) sub.push('期限を記録');
+    var sh = St.shopOf(S, it);
+    if (sh) sub.push(esc(sh.name));
     if (it.memo) sub.push(esc(it.memo));
     return '<div class="erow c-' + it.cat + '" data-id="' + it.id + '">' +
       '<button type="button" class="en" data-act="edit"><b>' + esc(it.name) + '</b>' + (sub.length ? '<small>' + sub.join(' ・ ') + '</small>' : '') + '</button>' +
@@ -236,7 +254,31 @@
       '</div>';
   }
 
-  // ── 買い出しの画面
+  // ── 買い出しの画面（お店ごとに並べる）
+  function listItems() {
+    var order = {};
+    CATS.forEach(function (c, i) { order[c.id] = i; });
+    // 同じお店の中は分類の順（並べ替えは同じ分類の中の順を保つ）
+    return S.items.filter(St.onList).map(function (it, i) { return { it: it, i: i }; }).sort(function (a, b) {
+      return order[a.it.cat] - order[b.it.cat] || a.i - b.i;
+    }).map(function (x) { return x.it; });
+  }
+  // [{ id, name, label, items }]。買い出し先の順で、決めていないは最後。品の無いお店は入れない
+  function shopGroups(items) {
+    var gs = S.shops.map(function (sh) { return { id: sh.id, name: sh.name, label: sh.name, items: [] }; });
+    var none = { id: 'none', name: '決めていない', label: '買い出し先を決めていない', items: [] };
+    items.forEach(function (it) {
+      var sh = St.shopOf(S, it);
+      var g = none;
+      if (sh) gs.forEach(function (x) { if (x.id === sh.id) g = x; });
+      g.items.push(it);
+    });
+    return gs.concat([none]).filter(function (g) { return g.items.length; });
+  }
+  function shopSel() {
+    if (ui.shop !== 'all' && ui.shop !== 'none' && !St.findShop(S, ui.shop)) ui.shop = 'all';
+    return ui.shop;
+  }
   function srow(it) {
     var u = esc(it.unit);
     return '<div class="srow c-' + it.cat + (St.onList(it) ? '' : ' zero') + '" data-id="' + it.id + '">' +
@@ -248,10 +290,12 @@
       '<span class="su">' + u + '</span></div>';
   }
   function srowSub(it) {
+    var sh = St.shopOf(S, it);
     var p = [];
     if (it.out) p.push('<span class="nw so">ストックなし</span>');
+    p.push('<button type="button" class="shp-b' + (sh ? '' : ' none') + '" data-act="shop">' + (sh ? esc(sh.name) : '買い出し先を決める') + ' ▾</button>');
     if (it.memo) p.push(esc(it.memo));
-    return p.join(' ・ ');
+    return p.join(' ');
   }
   function patchRow(el, it) {
     el.classList.toggle('zero', !St.onList(it));
@@ -259,37 +303,76 @@
     if (document.activeElement !== bi) bi.value = it.buy ? fmt(it.buy) : '';
   }
   function shopHeadHtml() {
-    var items = S.items.filter(St.onList);
+    var items = listItems();
+    var groups = shopGroups(items);
+    var sel = shopSel();
+    var shown = sel === 'all' ? items.length : groups.filter(function (g) { return g.id === sel; }).reduce(function (n, g) { return n + g.items.length; }, 0);
+    var cs = [['all', '全部', items.length]].concat(groups.map(function (g) { return [g.id, g.name, g.items.length]; }));
+    if (!cs.some(function (c) { return c[0] === sel; })) {
+      var sh = St.findShop(S, sel);
+      cs.push([sel, sh ? sh.name : '決めていない', 0]);
+    }
     return '<div class="shop-head"><b>買うもの ' + items.length + '品</b>' +
-      (items.length ? '<button type="button" class="ghost sm" data-act="copy">リストをコピー</button>' : '') + '</div>';
+      (shown ? '<button type="button" class="ghost sm" data-act="copy">リストをコピー</button>' : '') + '</div>' +
+      (items.length ? '<div class="chips" role="tablist">' + cs.map(function (c) {
+        return '<button type="button" class="chip' + (c[0] === sel ? ' on' : '') + '" data-act="shopf" data-f="' + esc(c[0]) + '">' +
+          esc(c[1]) + '<span class="n">' + c[2] + '</span></button>';
+      }).join('') + '</div>' : '');
   }
   function viewShop() {
-    var items = S.items.filter(St.onList);
+    var items = listItems();
+    var sel = shopSel();
+    var groups = shopGroups(items).filter(function (g) { return sel === 'all' || g.id === sel; });
     var h = '<div id="vhead">' + shopHeadHtml() + '</div>';
     if (!items.length) {
       h += '<p class="empty">買うものはありません。<br>「ストックなし」にチェックを入れた品と、買い出しの数を入れた品がここに集まります。</p>';
+    } else if (!groups.length) {
+      h += '<p class="empty">この買い出し先で買うものはありません。</p>';
     } else {
-      CATS.forEach(function (c) {
-        var g = items.filter(function (it) { return it.cat === c.id; });
-        if (!g.length) return;
-        h += '<h3 class="grp g-' + c.id + '">' + c.name + '</h3><div class="slist">' + g.map(srow).join('') + '</div>';
+      groups.forEach(function (g) {
+        h += '<h3 class="grp gs">' + esc(g.label) + '<span class="n">' + g.items.length + '品</span></h3>' +
+          '<div class="slist">' + g.items.map(srow).join('') + '</div>';
       });
-      h += '<p class="hint">「買った」を押すと、ストックなしのチェックが外れて、買い出しは0に戻ります。期限を記録する品は期限を聞きます。</p>';
+      h += '<p class="hint">「買った」を押すと、ストックなしのチェックが外れて、買い出しは0に戻ります。期限を記録する品は期限を聞きます。' +
+        '品の名前の下の「▾」で買い出し先を変えられます。お店を足す・直すときは右上の「編集」。</p>';
     }
     main.innerHTML = h;
   }
   function shopText() {
     var d = new Date();
-    var lines = ['買い出し（' + (d.getMonth() + 1) + '/' + d.getDate() + '）'];
-    CATS.forEach(function (c) {
-      var g = S.items.filter(function (it) { return it.cat === c.id && St.onList(it); });
-      if (!g.length) return;
-      lines.push('', '【' + c.name + '】');
-      g.forEach(function (it) {
+    var sel = shopSel();
+    var groups = shopGroups(listItems());
+    var title = '買い出し（' + (d.getMonth() + 1) + '/' + d.getDate() + '）';
+    if (sel !== 'all') {
+      groups = groups.filter(function (g) { return g.id === sel; });
+      if (groups[0]) title += ' ' + groups[0].name;
+    }
+    var lines = [title];
+    groups.forEach(function (g) {
+      lines.push('');
+      if (sel === 'all') lines.push('【' + g.name + '】');
+      g.items.forEach(function (it) {
         lines.push('・' + it.name + (it.buy > 0 ? ' ' + fmt(it.buy) + it.unit : '') + (it.memo ? '（' + it.memo + '）' : ''));
       });
     });
     return lines.join('\n');
+  }
+
+  // ── 買い出し先の編集（買い出しのタブで「編集」）
+  function viewShopEdit() {
+    var used = {};
+    S.items.forEach(function (it) { if (it.shop) used[it.shop] = (used[it.shop] || 0) + 1; });
+    var n = S.shops.length;
+    main.innerHTML = '<div id="vhead"><div class="ebar"><b>買い出し先を編集（' + n + '件）</b>' +
+        '<p>名前を押すと直せます。↑↓で並べ替え、×で消します。消した買い出し先の品は「決めていない」に戻ります。終わったら右上の「完了」。</p></div></div>' +
+      (n ? '<div class="elist">' + S.shops.map(function (sh, i) {
+        return '<div class="erow c-shop" data-sid="' + esc(sh.id) + '">' +
+          '<button type="button" class="en" data-act="sh-edit"><b>' + esc(sh.name) + '</b><small>' + (used[sh.id] ? used[sh.id] + '品' : 'まだ品はありません') + '</small></button>' +
+          '<button type="button" class="ib" data-act="sh-up" aria-label="上へ"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
+          '<button type="button" class="ib" data-act="sh-down" aria-label="下へ"' + (i === n - 1 ? ' disabled' : '') + '>↓</button>' +
+          '<button type="button" class="ib del" data-act="sh-del" aria-label="消す">×</button></div>';
+      }).join('') + '</div>' : '<p class="empty">買い出し先がありません。</p>') +
+      '<div class="eadd"><button type="button" class="ghost" data-act="sh-add">＋ 買い出し先を足す</button></div>';
   }
 
   // ── 全体
@@ -308,7 +391,6 @@
       c.hidden = !n;
     });
     var eb = $('#editBtn');
-    eb.hidden = ui.view === 'shop';
     eb.textContent = editing ? '完了' : '編集';
     eb.classList.toggle('on', editing);
   }
@@ -320,11 +402,11 @@
   var renderedDay = '';
   function render() {
     renderedDay = St.ymd(new Date());
-    if (ui.view === 'shop') editing = false;
     renderTabs();
-    if (ui.view === 'shop') viewShop();
+    if (ui.view === 'shop') (editing ? viewShopEdit : viewShop)();
     else if (editing) viewEdit(ui.view);
     else viewCat(ui.view);
+    $('#fab').hidden = editing && ui.view === 'shop';   // 買い出し先の編集では、品を足す＋は出さない
     updateGear();
   }
   function changed(it) {
@@ -393,6 +475,8 @@
     var track = it ? it.track : St.catOf(cat).track;
     var out = it ? it.out : false;
     var lots = it ? St.sortLots(it.lots).map(function (l) { return { exp: l.exp, qty: l.qty > 0 ? fmt(l.qty) : '' }; }) : [];
+    // 新しい品は、買い出しのタブでお店をしぼっていればそのお店にしておく
+    var shop = it ? (St.shopOf(S, it) ? it.shop : '') : (ui.view === 'shop' && St.findShop(S, ui.shop) ? ui.shop : '');
     var html = '<form class="form" id="ef" autocomplete="off" novalidate>' +
       field('名前', '<input name="nm" maxlength="40" value="' + esc(it ? it.name : '') + '" placeholder="例：しょうゆ">') +
       '<div class="f"><span class="fl">分類</span><div class="seg">' + CATS.map(function (c) {
@@ -402,6 +486,10 @@
         field('単位', '<input name="unit" list="units" maxlength="8" value="' + esc(it ? it.unit : '') + '" placeholder="本・個・袋">') +
         field('買い出し数', '<input name="buy" inputmode="decimal" value="' + (it && it.buy ? fmt(it.buy) : '') + '" placeholder="0">') +
       '</div>' +
+      '<div class="f"><span class="fl">買い出し先</span><div class="pills">' +
+        [{ id: '', name: '決めていない' }].concat(S.shops).map(function (o) {
+          return '<label><input type="radio" name="shop" value="' + esc(o.id) + '"' + (o.id === shop ? ' checked' : '') + '><span>' + esc(o.name) + '</span></label>';
+        }).join('') + '</div></div>' +
       '<label class="tg"><input type="checkbox" name="out"' + (out ? ' checked' : '') + '><span>ストックなし（切らしている）</span></label>' +
       '<label class="tg"><input type="checkbox" name="track"' + (track ? ' checked' : '') + '><span>期限を記録する</span></label>' +
       '<div id="lbox" class="f"' + (track && !out ? '' : ' hidden') + '><span class="fl">期限（賞味期限・使用期限）</span>' +
@@ -460,7 +548,7 @@
       e.preventDefault();
       var name = E.nm.value.trim();
       if (!name) { E.nm.focus(); toast('名前を入れてください'); return; }
-      var o = { name: name, cat: E.cat.value, unit: E.unit.value, buy: E.buy.value, memo: E.memo.value, track: E.track.checked, out: E.out.checked, lots: [] };
+      var o = { name: name, cat: E.cat.value, unit: E.unit.value, buy: E.buy.value, memo: E.memo.value, track: E.track.checked, out: E.out.checked, lots: [], shop: E.shop.value };
       if (o.track && !o.out) {
         if (lots.some(function (l) { return !l.exp && String(l.qty).trim(); })) { toast('数を入れた行に、期限を入れてください'); return; }
         o.lots = lots.filter(function (l) { return l.exp; }).map(function (l) { return { exp: l.exp, qty: l.qty }; });
@@ -506,6 +594,48 @@
     persist();
     render();
     toast('「' + it.name + '」を消しました', before);
+  }
+
+  // ── 品の買い出し先を選ぶ（買い出しの画面の「▾」）
+  function openShopPick(it) {
+    var cur = St.shopOf(S, it) ? it.shop : '';
+    openSheet(it.name + 'の買い出し先',
+      '<div class="plist">' + [{ id: '', name: '決めていない' }].concat(S.shops).map(function (o) {
+        return '<button type="button" class="popt' + (o.id === cur ? ' on' : '') + '" data-shop="' + esc(o.id) + '">' + esc(o.name) + '</button>';
+      }).join('') + '</div>' +
+      '<p class="hint">お店を足す・直すときは、買い出しのタブで右上の「編集」。</p>');
+    $('.plist').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-shop]');
+      if (!b) return;
+      it.shop = b.dataset.shop;
+      persist();
+      closeSheet();
+      render();
+      var sh = St.shopOf(S, it);
+      toast(it.name + 'の買い出し先：' + (sh ? sh.name : '決めていない'));
+    });
+  }
+
+  // ── 買い出し先を足す・直す
+  function openShopEdit(id) {
+    var sh = id ? St.findShop(S, id) : null;
+    openSheet(sh ? '買い出し先を直す' : '買い出し先を足す',
+      '<form class="form" id="sf" autocomplete="off" novalidate>' +
+      field('名前', '<input name="nm" maxlength="20" value="' + esc(sh ? sh.name : '') + '" placeholder="例：ホームセンター">') +
+      '<button type="submit" class="primary">' + (sh ? '保存' : '足す') + '</button></form>');
+    var f = $('#sf');
+    f.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var name = f.elements.nm.value.trim();
+      if (!name) { f.elements.nm.focus(); toast('名前を入れてください'); return; }
+      var ok = sh ? St.renameShop(S, sh.id, name) : !!St.addShop(S, name);
+      if (!ok) { toast('同じ名前の買い出し先があります'); return; }
+      persist();
+      closeSheet();
+      render();
+      toast(sh ? '直しました' : '「' + name + '」を足しました');
+    });
+    setTimeout(function () { f.elements.nm.focus(); }, 50);
   }
 
   // ── よくある品から選んで足す（その分類の見本のうち、今の一覧に無いもの）
@@ -663,8 +793,8 @@
   function doImport(file) {
     var r = new FileReader();
     r.onload = function () {
-      var items;
-      try { items = St.parseBackup(String(r.result)); } catch (e) {
+      var bk, items;
+      try { bk = St.parseBackup(String(r.result)); items = bk.items; } catch (e) {
         toast('読めませんでした。Stock Board で書き出した控えを選んでください');
         return;
       }
@@ -675,6 +805,7 @@
       $('#impGo').addEventListener('click', function () {
         var before = snap();
         S.items = items;
+        if (bk.shops) S.shops = bk.shops;   // 買い出し先の無い前の控えなら、今の買い出し先のまま
         persist();
         closeSheet();
         render();
@@ -690,6 +821,8 @@
     if (!b) return;
     var act = b.dataset.act;
     if (act === 'out' || act === 'bset') return;   // change で受ける
+    var shRow = b.closest('[data-sid]');
+    if (shRow) { shopAct(act, shRow.dataset.sid); return; }
     var host = b.closest('[data-id]');
     var it = host ? find(host.dataset.id) : null;
     switch (act) {
@@ -732,8 +865,43 @@
         break;
       case 'add': openEdit(null); break;
       case 'pick': openPicker(ui.view); break;
+      case 'shop':
+        if (it) openShopPick(it);
+        break;
+      case 'shopf':
+        ui.shop = b.dataset.f;
+        saveUi();
+        render();
+        break;
+      case 'sh-add': openShopEdit(null); break;
     }
   });
+  // 買い出し先の編集の行
+  function shopAct(act, id) {
+    var sh = St.findShop(S, id);
+    if (!sh) return;
+    if (act === 'sh-edit') { openShopEdit(id); return; }
+    if (act === 'sh-up' || act === 'sh-down') {
+      if (!St.moveShop(S, id, act === 'sh-up' ? -1 : 1)) return;
+      persist();
+      render();
+      var moved = main.querySelector('.erow[data-sid="' + id + '"]');
+      if (moved) {
+        moved.classList.add('moved');
+        moved.scrollIntoView({ block: 'nearest' });
+        var again = $('[data-act="' + act + '"]', moved);
+        if (again && !again.disabled) again.focus();
+      }
+      return;
+    }
+    if (act === 'sh-del') {
+      var before = snap();
+      var n = St.removeShop(S, id);
+      persist();
+      render();
+      toast('「' + sh.name + '」を消しました' + (n > 0 ? '（' + n + '品は決めていないに）' : ''), before);
+    }
+  }
   main.addEventListener('change', function (e) {
     var inp = e.target;
     var act = inp.dataset && inp.dataset.act;

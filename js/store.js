@@ -3,7 +3,8 @@
      並ぶので、ほかのアプリと同じ名前にすると中身が混ざる
    ・計算はここに集めて、画面（app.js）は出すだけにする。test/計算を試す.js がここだけを試す
    ・2026-11-03 に「残りの数」をやめて「ストックなし」のチェックにした（ko-dai さんの希望）。
-     前の形の記録は normalize で受ける（数えて0だった品をストックなしにする） */
+     前の形の記録は normalize で受ける（数えて0だった品をストックなしにする）
+   ・同じ日に「買い出し先」（お店）を足した。品は shop に買い出し先の id を1つ持つ（'' ＝決めていない） */
 (function (root) {
   'use strict';
 
@@ -67,8 +68,9 @@
   }
 
   // ── 品物
-  // 品 = { id, cat, name, unit, buy, memo, track, out, lots }
+  // 品 = { id, cat, name, unit, buy, memo, track, out, lots, shop }
   //   out  … ストックなし（チェック）
+  //   shop … いつもの買い出し先の id（'' ＝決めていない）
   //   lots … 期限を記録する品だけ。{ id, exp, qty }。qty は分かれば（0＝数は入れていない）
   //   ★ストックなしの品は lots を持たない（無いものに期限は無い）
 
@@ -157,8 +159,82 @@
       memo: String(o.memo || '').trim().slice(0, 80),
       track: track,
       out: out,
-      lots: lots
+      lots: lots,
+      shop: typeof o.shop === 'string' ? o.shop.slice(0, 40) : ''
     };
+  }
+
+  // ── 買い出し先（お店）
+  // 買い出し先 = { id, name }。並びは s.shops の順
+  var SHOP_MAX = 20;   // 名前の長さ
+  function normShop(o) {
+    o = o || {};
+    return {
+      id: typeof o.id === 'string' && o.id ? o.id.slice(0, 40) : uid(),
+      name: String(o.name || '').trim().slice(0, SHOP_MAX)
+    };
+  }
+  function findShop(s, id) {
+    for (var i = 0; i < s.shops.length; i++) if (s.shops[i].id === id) return s.shops[i];
+    return null;
+  }
+  // 品の買い出し先。消した買い出し先を指していたら決めていない（null）
+  function shopOf(s, it) { return it.shop ? findShop(s, it.shop) : null; }
+  function sameName(s, name, exceptId) {
+    var n = String(name || '').trim();
+    return s.shops.some(function (x) { return x.name === n && x.id !== exceptId; });
+  }
+  // 足す。名前が空・同じ名前があれば null
+  function addShop(s, name, id) {
+    var sh = normShop({ id: id, name: name });
+    if (!sh.name || sameName(s, sh.name) || findShop(s, sh.id)) return null;
+    s.shops.push(sh);
+    return sh;
+  }
+  function renameShop(s, id, name) {
+    var sh = findShop(s, id);
+    var n = String(name || '').trim().slice(0, SHOP_MAX);
+    if (!sh || !n || sameName(s, n, id)) return false;
+    sh.name = n;
+    return true;
+  }
+  // 消す。その買い出し先だった品は決めていないに戻す。戻した品の数を返す
+  function removeShop(s, id) {
+    var before = s.shops.length;
+    s.shops = s.shops.filter(function (x) { return x.id !== id; });
+    if (s.shops.length === before) return -1;
+    var n = 0;
+    s.items.forEach(function (it) { if (it.shop === id) { it.shop = ''; n++; } });
+    return n;
+  }
+  function moveShop(s, id, d) {
+    var i = -1;
+    for (var k = 0; k < s.shops.length; k++) if (s.shops[k].id === id) { i = k; break; }
+    var j = i + d;
+    if (i < 0 || j < 0 || j >= s.shops.length) return false;
+    var t = s.shops[i];
+    s.shops[i] = s.shops[j];
+    s.shops[j] = t;
+    return true;
+  }
+  // はじめに入れる買い出し先。一度だけ（消したものはよみがえらせない）。足した数を返す
+  function seedShops(s, list) {
+    if (s.meta.shopsSeeded) return 0;
+    var n = 0;
+    (list || []).forEach(function (x) { if (addShop(s, x.name, x.id)) n++; });
+    s.meta.shopsSeeded = true;
+    return n;
+  }
+  function normShops(list) {
+    var out = [];
+    var seen = {};
+    (Array.isArray(list) ? list : []).forEach(function (o) {
+      var sh = normShop(o);
+      if (!sh.name || seen['i' + sh.id] || seen['n' + sh.name]) return;
+      seen['i' + sh.id] = seen['n' + sh.name] = true;
+      out.push(sh);
+    });
+    return out;
   }
 
   // 同じ分類の中で1つ上（d=-1）か下（d=1）と入れかえる。動かせなければ false
@@ -178,12 +254,13 @@
 
   // ── 全体
   function blank() {
-    return { v: 2, items: [], meta: { seeded: false, seedVer: 0, introDone: false, since: 0, lastExport: 0, changedAt: 0 } };
+    return { v: 3, items: [], shops: [], meta: { seeded: false, seedVer: 0, shopsSeeded: false, introDone: false, since: 0, lastExport: 0, changedAt: 0 } };
   }
   function fromObj(o) {
     var s = blank();
     if (o && Array.isArray(o.items)) {
       s.items = o.items.map(normalize).filter(function (it) { return it.name; });
+      s.shops = normShops(o.shops);
       if (o.meta && typeof o.meta === 'object') {
         Object.keys(s.meta).forEach(function (k) { if (k in o.meta) s.meta[k] = o.meta[k]; });
         // seedVer が無いのは、はじめの見本（v1）だけを写した記録
@@ -228,13 +305,17 @@
   }
 
   // 控え（書き出したファイル）を読む。形が違えば投げる
+  // 買い出し先の無い前の控えは shops: null（今の買い出し先をそのまま使う）
   function parseBackup(text) {
     var o = JSON.parse(text);
     if (!o || o.app !== 'StockBoard' || !Array.isArray(o.items)) throw new Error('Stock Board の控えではありません');
-    return o.items.map(normalize).filter(function (it) { return it.name; });
+    return {
+      items: o.items.map(normalize).filter(function (it) { return it.name; }),
+      shops: Array.isArray(o.shops) ? normShops(o.shops) : null
+    };
   }
   function backupText(s) {
-    return JSON.stringify({ app: 'StockBoard', v: 2, at: new Date().toISOString(), items: s.items }, null, 1);
+    return JSON.stringify({ app: 'StockBoard', v: 3, at: new Date().toISOString(), items: s.items, shops: s.shops }, null, 1);
   }
 
   root.SB = root.SB || {};
@@ -245,6 +326,8 @@
     sortLots: sortLots, nearest: nearest, expSoon: expSoon, onList: onList,
     setOut: setOut, setBuy: setBuy, stepBuy: stepBuy, addLot: addLot, bought: bought,
     normalize: normalize, move: move, blank: blank, fromObj: fromObj, load: load, save: save,
+    findShop: findShop, shopOf: shopOf, addShop: addShop, renameShop: renameShop, removeShop: removeShop,
+    moveShop: moveShop, seedShops: seedShops,
     missingSeeds: missingSeeds, seedMissing: seedMissing, parseBackup: parseBackup, backupText: backupText
   };
 })(typeof window !== 'undefined' ? window : globalThis);

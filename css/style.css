@@ -282,6 +282,17 @@ main {
 @media (prefers-color-scheme: dark) { .bd.out { color: #1a0d0b; } }
 .sub { font-size: 12px; color: var(--muted); margin-top: 2px; min-height: 0; }
 .sub:empty { display: none; }
+.shp-tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  background: var(--bg);
+  margin-right: 2px;
+}
 
 button.lots {
   width: 100%;
@@ -383,14 +394,13 @@ button.lots {
   font-size: 16px;
 }
 .grp {
-  font-size: 13px;
-  margin: 14px 0 6px;
-  padding-left: 8px;
-  border-left: 4px solid var(--cat);
+  font-size: 14px;
+  margin: 16px 0 6px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
 }
-.g-spice { --cat: var(--spice); }
-.g-supply { --cat: var(--supply); }
-.g-bousai { --cat: var(--bousai); }
+.grp .n { font-size: 12px; font-weight: 400; color: var(--muted); }
 .slist { display: grid; gap: 6px; }
 .srow {
   display: grid;
@@ -399,6 +409,7 @@ button.lots {
   align-items: center;
   background: var(--card);
   border: 1px solid var(--line);
+  border-left: 4px solid var(--cat, var(--line));   /* 左の色は分類 */
   border-radius: 12px;
   padding: 8px 10px;
 }
@@ -420,6 +431,15 @@ button.lots {
 .sn small:empty { display: none; }
 .nw { white-space: nowrap; }
 .so { color: var(--over); font-weight: 700; }
+.shp-b {
+  border: 0;
+  background: none;
+  padding: 2px 0;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+}
+.shp-b.none { color: var(--muted); text-decoration: underline dotted; text-underline-offset: 3px; }
 .stp.sm { height: 36px; width: 112px; }
 .stp.sm button { width: 34px; font-size: 18px; }
 .stp.sm input { font-size: 16px; }
@@ -471,6 +491,35 @@ button.lots {
 .pk span { flex: 1; font-weight: 600; }
 .pk small { color: var(--muted); font-size: 12px; }
 .guide { margin-top: 16px; }
+.c-shop { --cat: var(--accent); }
+
+/* 買い出し先を選ぶ（品を直す入れ物の中・▾ を押したとき） */
+.pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.pills label { position: relative; }
+.pills input { position: absolute; opacity: 0; pointer-events: none; }
+.pills span {
+  display: block;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--input);
+  font-size: 14px;
+  font-weight: 600;
+}
+.pills input:checked + span { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.pills input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
+.plist { display: grid; gap: 6px; }
+.popt {
+  text-align: left;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  font-weight: 700;
+  font-size: 15px;
+}
+.popt.on { border-color: var(--accent); background: var(--accent-tint); color: var(--accent); }
+.popt.on::after { content: " ✓"; }
 
 /* ── ボタン */
 .primary, .ghost, .danger {

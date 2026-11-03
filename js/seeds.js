@@ -7,6 +7,16 @@ var SB = window.SB = window.SB || {};
 
 SB.SEED_VER = 2;
 
+// はじめに入れる買い出し先（2026-11-03 ko-dai さんの指定）。一度だけ入れる（消したものはよみがえらせない）
+SB.SHOPS = [
+  { id: 'super', name: 'スーパー' },
+  { id: 'drug', name: 'ドラッグストア' },
+  { id: 'donki', name: 'ドンキ' },
+  { id: 'muji', name: '無印良品' },
+  { id: 'daiso', name: 'ダイソー' },
+  { id: 'amazon', name: 'Amazon' }
+];
+
 SB.SEEDS = [
   // 調味料
   { cat: 'spice', name: 'しょうゆ', unit: '本' },
