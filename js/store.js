@@ -1,11 +1,13 @@
 /* Stock Board の中身と計算（中身は端末の中だけに置く）
    ・保存場所の名前は stockboard. で始める。個人アプリは全部同じ住所（kodai0625.github.io）に
      並ぶので、ほかのアプリと同じ名前にすると中身が混ざる
-   ・計算はここに集めて、画面（app.js）は数字を出すだけにする。test/計算を試す.js がここだけを試す */
+   ・計算はここに集めて、画面（app.js）は出すだけにする。test/計算を試す.js がここだけを試す
+   ・2026-11-03 に「残りの数」をやめて「ストックなし」のチェックにした（ko-dai さんの希望）。
+     前の形の記録は normalize で受ける（数えて0だった品をストックなしにする） */
 (function (root) {
   'use strict';
 
-  var KEY = 'stockboard.v1';
+  var KEY = 'stockboard.v1';   // 形を変えても名前は変えない（変えると前の中身が読めなくなる）
   var CATS = [
     { id: 'spice', name: '調味料', track: false },
     { id: 'supply', name: '備品', track: false },
@@ -65,134 +67,118 @@
   }
 
   // ── 品物
-  // 期限の古い順。期限なしは最後
+  // 品 = { id, cat, name, unit, buy, memo, track, out, lots }
+  //   out  … ストックなし（チェック）
+  //   lots … 期限を記録する品だけ。{ id, exp, qty }。qty は分かれば（0＝数は入れていない）
+  //   ★ストックなしの品は lots を持たない（無いものに期限は無い）
+
+  // 期限の古い順
   function sortLots(lots) {
-    return lots.slice().sort(function (a, b) {
-      if (!a.exp && !b.exp) return 0;
-      if (!a.exp) return 1;
-      if (!b.exp) return -1;
-      return a.exp < b.exp ? -1 : a.exp > b.exp ? 1 : 0;
+    return lots.slice().sort(function (a, b) { return a.exp < b.exp ? -1 : a.exp > b.exp ? 1 : 0; });
+  }
+  // 期限の一番近い組
+  function nearest(it, today) {
+    if (!it.track || !it.lots.length) return null;
+    var l = sortLots(it.lots)[0];
+    var d = daysLeft(l.exp, today);
+    return { lot: l, days: d, state: expState(d) };
+  }
+  // どれかの組が90日以内か期限切れ
+  function expSoon(it, today) {
+    if (!it.track) return false;
+    return it.lots.some(function (l) {
+      var st = expState(daysLeft(l.exp, today));
+      return st === 'over' || st === 'soon' || st === 'near';
     });
   }
 
-  // 残り。まだ数えていなければ null
-  function qty(it) {
-    if (!it.counted) return null;
-    if (!it.track) return it.qty;
-    return round(it.lots.reduce(function (s, l) { return s + l.qty; }, 0));
-  }
+  // 買い出しに出る品：ストックなし か 買い出しの数が入っている
+  function onList(it) { return it.out || it.buy > 0; }
 
-  // 期限の一番近い組（残っていて、期限が入っているものだけ）
-  function nearest(it, today) {
-    if (!it.track) return null;
-    var ls = sortLots(it.lots.filter(function (l) { return l.qty > 0 && l.exp; }));
-    if (!ls.length) return null;
-    var d = daysLeft(ls[0].exp, today);
-    return { lot: ls[0], days: d, state: expState(d) };
-  }
-
-  function isOut(it) { return qty(it) === 0; }
-  function isLow(it) {
-    var q = qty(it);
-    return q != null && it.target > 0 && q < it.target;
-  }
-  // 目安まであといくつ（買う数なので切り上げ）
-  function shortfall(it) {
-    var q = qty(it);
-    if (q == null || !(it.target > 0)) return 0;
-    return Math.max(0, Math.ceil(round(it.target - q)));
-  }
-
-  // −／＋。期限を記録する品は、減らすときは期限の古い組から、増やすときは一番新しい組に足す
-  function step(it, d) {
-    if (!it.track) {
-      it.qty = Math.max(0, round((it.counted ? it.qty : 0) + d));
-      it.counted = true;
-      return;
-    }
-    it.counted = true;
-    if (d < 0) {
-      var need = -d;
-      sortLots(it.lots).forEach(function (l) {
-        if (need <= 0 || l.qty <= 0) return;
-        var take = Math.min(l.qty, need);
-        l.qty = round(l.qty - take);
-        need = round(need - take);
-      });
-      it.lots = it.lots.filter(function (l) { return l.qty > 0; });
-    } else {
-      var ls = sortLots(it.lots);
-      var last = ls[ls.length - 1];
-      if (!last) { last = { id: uid(), qty: 0, exp: '' }; it.lots.push(last); }
-      last.qty = round(last.qty + d);
-    }
-  }
-
-  // 数を直接入れる（期限を記録しない品だけ）。空にすると「まだ数えていない」に戻る
-  function setQty(it, v) {
-    var n = toNum(v);
-    if (isNaN(n)) { it.counted = false; it.qty = 0; return; }
-    it.counted = true;
-    it.qty = Math.max(0, round(n));
+  // ストックなしにすると期限の記録も消す。消した組の数を返す（知らせに出すため）
+  function setOut(it, on) {
+    it.out = !!on;
+    if (!it.out) return 0;
+    var n = it.lots.length;
+    it.lots = [];
+    return n;
   }
   function setBuy(it, v) { it.buy = nonNeg(v); }
   function stepBuy(it, d) { it.buy = Math.max(0, round(it.buy + d)); }
 
-  // 同じ期限の組があればそこに足す
+  // 期限の組を足す。同じ期限があればそこにまとめる。期限が読めなければ足さない
   function addLot(it, n, exp) {
+    if (!parseDate(exp)) return false;
     n = nonNeg(n);
-    if (!n) return;
-    exp = parseDate(exp) ? exp : '';
     var same = null;
     it.lots.forEach(function (l) { if (l.exp === exp) same = l; });
     if (same) same.qty = round(same.qty + n);
-    else it.lots.push({ id: uid(), qty: n, exp: exp });
-    it.counted = true;
+    else it.lots.push({ id: uid(), exp: exp, qty: n });
+    it.out = false;
+    return true;
   }
 
-  // 買った：買い出しの数を残りに足して、買い出しを 0 に戻す
-  function bought(it, n, exp) {
-    n = n == null ? it.buy : nonNeg(n);
-    if (it.track) {
-      addLot(it, n, exp);
-      it.counted = true;
-    } else {
-      it.qty = round((it.counted ? it.qty : 0) + n);
-      it.counted = true;
-    }
+  // 買った：ストックなしを外して、買い出しを0に戻す。期限を記録する品は期限が分かれば組を足す
+  function bought(it, exp, n) {
+    if (it.track && exp) addLot(it, n == null ? it.buy : n, exp);
+    it.out = false;
     it.buy = 0;
   }
 
   function normalize(o) {
     o = o || {};
     var cat = catOf(o.cat) ? o.cat : 'supply';
-    var it = {
+    var track = o.track == null ? catOf(cat).track : !!o.track;
+    var raw = Array.isArray(o.lots) ? o.lots : [];
+    var out;
+    if (typeof o.out === 'boolean') {
+      out = o.out;
+    } else {
+      // 前の形（残りの数）：数えて0だった品をストックなしにする
+      var left = track
+        ? raw.reduce(function (s, l) { return s + nonNeg(l && l.qty); }, 0)
+        : nonNeg(o.qty);
+      out = !!o.counted && left === 0;
+    }
+    var lots = [];
+    if (track && !out) {
+      // 期限の無い組は捨てる（前の形では数だけを持っていた。数はもう持たない）
+      lots = raw.map(function (l) {
+        l = l || {};
+        return { id: typeof l.id === 'string' && l.id ? l.id : uid(), exp: parseDate(l.exp) ? l.exp : '', qty: nonNeg(l.qty) };
+      }).filter(function (l) { return l.exp; });
+    }
+    return {
       id: typeof o.id === 'string' && o.id ? o.id : uid(),
       cat: cat,
       name: String(o.name || '').trim().slice(0, 40),
       unit: String(o.unit || '').trim().slice(0, 8),
-      target: nonNeg(o.target),
       buy: nonNeg(o.buy),
       memo: String(o.memo || '').trim().slice(0, 80),
-      track: o.track == null ? catOf(cat).track : !!o.track,
-      counted: !!o.counted,
-      qty: 0,
-      lots: []
+      track: track,
+      out: out,
+      lots: lots
     };
-    if (it.track) {
-      it.lots = (Array.isArray(o.lots) ? o.lots : []).map(function (l) {
-        l = l || {};
-        return { id: typeof l.id === 'string' && l.id ? l.id : uid(), qty: nonNeg(l.qty), exp: parseDate(l.exp) ? l.exp : '' };
-      }).filter(function (l) { return l.qty > 0; });
-    } else {
-      it.qty = nonNeg(o.qty);
-    }
-    return it;
+  }
+
+  // 同じ分類の中で1つ上（d=-1）か下（d=1）と入れかえる。動かせなければ false
+  function move(s, id, d) {
+    var i = -1;
+    for (var k = 0; k < s.items.length; k++) if (s.items[k].id === id) { i = k; break; }
+    if (i < 0) return false;
+    var cat = s.items[i].cat;
+    var j = i + d;
+    while (j >= 0 && j < s.items.length && s.items[j].cat !== cat) j += d;
+    if (j < 0 || j >= s.items.length) return false;
+    var t = s.items[i];
+    s.items[i] = s.items[j];
+    s.items[j] = t;
+    return true;
   }
 
   // ── 全体
   function blank() {
-    return { v: 1, items: [], meta: { seeded: false, introDone: false, since: 0, lastExport: 0, changedAt: 0 } };
+    return { v: 2, items: [], meta: { seeded: false, seedVer: 0, introDone: false, since: 0, lastExport: 0, changedAt: 0 } };
   }
   function fromObj(o) {
     var s = blank();
@@ -200,6 +186,8 @@
       s.items = o.items.map(normalize).filter(function (it) { return it.name; });
       if (o.meta && typeof o.meta === 'object') {
         Object.keys(s.meta).forEach(function (k) { if (k in o.meta) s.meta[k] = o.meta[k]; });
+        // seedVer が無いのは、はじめの見本（v1）だけを写した記録
+        if (o.meta.seeded && !('seedVer' in o.meta)) s.meta.seedVer = 1;
       }
     }
     return s;
@@ -221,28 +209,32 @@
     try { root.localStorage.setItem(KEY, JSON.stringify(s)); return true; } catch (e) { return false; }
   }
 
-  // 見本のうち、同じ分類に同じ名前が無いものだけ足す。足した数を返す
-  function seedMissing(s, seeds) {
+  // 見本のうち、まだ無いもの。after を渡すと、その版より後に足した見本だけ
+  // （同じ分類に同じ名前があれば、あるとみなす）
+  function missingSeeds(s, seeds, cat, after) {
     var have = {};
     s.items.forEach(function (it) { have[it.cat + '\n' + it.name] = true; });
-    var n = 0;
-    (seeds || []).forEach(function (sd) {
-      if (have[sd.cat + '\n' + sd.name]) return;
-      s.items.push(normalize(sd));
-      n++;
+    return (seeds || []).filter(function (sd) {
+      if (cat && sd.cat !== cat) return false;
+      if ((sd.v || 1) <= (after || 0)) return false;
+      return !have[sd.cat + '\n' + sd.name];
     });
-    return n;
+  }
+  // 足した数を返す
+  function seedMissing(s, seeds, after) {
+    var list = missingSeeds(s, seeds, null, after);
+    list.forEach(function (sd) { s.items.push(normalize(sd)); });
+    return list.length;
   }
 
   // 控え（書き出したファイル）を読む。形が違えば投げる
   function parseBackup(text) {
     var o = JSON.parse(text);
     if (!o || o.app !== 'StockBoard' || !Array.isArray(o.items)) throw new Error('Stock Board の控えではありません');
-    var items = o.items.map(normalize).filter(function (it) { return it.name; });
-    return items;
+    return o.items.map(normalize).filter(function (it) { return it.name; });
   }
   function backupText(s) {
-    return JSON.stringify({ app: 'StockBoard', v: 1, at: new Date().toISOString(), items: s.items }, null, 1);
+    return JSON.stringify({ app: 'StockBoard', v: 2, at: new Date().toISOString(), items: s.items }, null, 1);
   }
 
   root.SB = root.SB || {};
@@ -250,9 +242,9 @@
     KEY: KEY, CATS: CATS, SOON: SOON, NEAR: NEAR,
     uid: uid, round: round, toNum: toNum, nonNeg: nonNeg, catOf: catOf,
     ymd: ymd, parseDate: parseDate, daysLeft: daysLeft, expState: expState,
-    sortLots: sortLots, qty: qty, nearest: nearest, isOut: isOut, isLow: isLow, shortfall: shortfall,
-    step: step, setQty: setQty, setBuy: setBuy, stepBuy: stepBuy, addLot: addLot, bought: bought,
-    normalize: normalize, blank: blank, fromObj: fromObj, load: load, save: save,
-    seedMissing: seedMissing, parseBackup: parseBackup, backupText: backupText
+    sortLots: sortLots, nearest: nearest, expSoon: expSoon, onList: onList,
+    setOut: setOut, setBuy: setBuy, stepBuy: stepBuy, addLot: addLot, bought: bought,
+    normalize: normalize, move: move, blank: blank, fromObj: fromObj, load: load, save: save,
+    missingSeeds: missingSeeds, seedMissing: seedMissing, parseBackup: parseBackup, backupText: backupText
   };
 })(typeof window !== 'undefined' ? window : globalThis);

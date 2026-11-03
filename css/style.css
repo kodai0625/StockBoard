@@ -93,6 +93,18 @@ button { cursor: pointer; }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 17px; letter-spacing: .02em; }
 .brand small { font-weight: 400; font-size: 12px; opacity: .7; }
 .logo { border-radius: 6px; display: block; }
+.head-r { display: flex; align-items: center; gap: 2px; }
+.hbtn {
+  background: none;
+  border: 0;
+  color: inherit;
+  font-weight: 700;
+  font-size: 15px;
+  padding: 8px 10px;
+  border-radius: 10px;
+}
+.hbtn:active { background: rgba(255, 255, 255, .12); }
+.hbtn.on { color: #8fd3ad; }
 .gear {
   position: relative;
   background: none;
@@ -270,11 +282,17 @@ main {
 @media (prefers-color-scheme: dark) { .bd.out { color: #1a0d0b; } }
 .sub { font-size: 12px; color: var(--muted); margin-top: 2px; min-height: 0; }
 .sub:empty { display: none; }
-.sub .short { color: var(--soon); font-weight: 600; }
-.sub .todo { color: var(--muted); font-style: normal; }
-.sub .dot { opacity: .6; }
 
-.lots { margin-top: 8px; display: grid; gap: 3px; }
+button.lots {
+  width: 100%;
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  display: grid;
+  gap: 3px;
+}
 .lot {
   display: grid;
   grid-template-columns: 1fr auto auto;
@@ -316,7 +334,7 @@ main {
   color: var(--muted);
 }
 .stp button:active { background: var(--line); }
-.stp input, .stp .qv {
+.stp input {
   flex: 1;
   min-width: 0;
   width: 100%;
@@ -329,11 +347,29 @@ main {
   padding: 0;
   outline: none;
 }
-.stp button.qv { color: var(--ink); text-decoration: underline dotted var(--muted); text-underline-offset: 4px; }
 .stp input::placeholder { color: var(--muted); font-weight: 400; font-size: 13px; }
-.stp button.qv.todo { font-size: 13px; font-weight: 400; color: var(--muted); text-decoration: none; }
 .stp:focus-within { border-color: var(--cat, var(--accent)); }
-.card.uncounted .nb:first-child .stp { border-style: dashed; }
+
+/* ストックなし（チェック） */
+.oc {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--input);
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.oc input { flex: none; width: 22px; height: 22px; margin: 0; accent-color: var(--over); }
+.card.is-out .oc { border-color: var(--over); background: var(--over-tint); color: var(--over); }
+.card.is-out .name { color: var(--over); }
 .card.has-buy .buy .stp { border-color: var(--accent); background: var(--accent-tint); }
 .card.has-buy .buy .nl { color: var(--accent); font-weight: 700; }
 
@@ -345,17 +381,6 @@ main {
   gap: 8px;
   margin-bottom: 10px;
   font-size: 16px;
-}
-.fill {
-  width: 100%;
-  border: 1px dashed var(--accent);
-  background: var(--accent-tint);
-  color: var(--accent);
-  font-weight: 700;
-  border-radius: 12px;
-  padding: 10px 12px;
-  margin-bottom: 12px;
-  font-size: 14px;
 }
 .grp {
   font-size: 13px;
@@ -392,11 +417,60 @@ main {
 .sn { min-width: 0; }
 .sn b { display: block; font-size: 15px; line-height: 1.3; overflow-wrap: anywhere; }
 .sn small { display: block; color: var(--muted); font-size: 11px; }
+.sn small:empty { display: none; }
 .nw { white-space: nowrap; }
+.so { color: var(--over); font-weight: 700; }
 .stp.sm { height: 36px; width: 112px; }
 .stp.sm button { width: 34px; font-size: 18px; }
 .stp.sm input { font-size: 16px; }
 .su { font-size: 12px; color: var(--muted); min-width: 1.5em; }
+
+/* ── 編集の画面 */
+.ebar {
+  background: var(--accent-tint);
+  border-radius: 14px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+.ebar p { margin: 2px 0 0; }
+.elist { display: grid; gap: 6px; }
+.erow {
+  display: grid;
+  grid-template-columns: 1fr 40px 40px 40px;
+  gap: 2px;
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--cat, var(--accent));
+  border-radius: 12px;
+  padding: 2px 4px 2px 12px;
+}
+.erow.moved { animation: moved .7s ease-out; }
+@keyframes moved { from { background: var(--accent-tint); } to { background: var(--card); } }
+.en { min-width: 0; text-align: left; background: none; border: 0; padding: 8px 0; }
+.en b { display: block; font-size: 15px; line-height: 1.35; overflow-wrap: anywhere; }
+.en b::after { content: " ✎"; color: var(--muted); font-weight: 400; font-size: 13px; }
+.en small { display: block; color: var(--muted); font-size: 11px; }
+.ib {
+  width: 40px;
+  height: 40px;
+  border: 0;
+  background: none;
+  border-radius: 10px;
+  font-size: 18px;
+  color: var(--muted);
+}
+.ib:active { background: var(--line); }
+.ib:disabled { opacity: .2; }
+.ib.del { color: var(--over); font-size: 20px; }
+.eadd { display: grid; gap: 8px; margin-top: 14px; }
+.pklist { margin: 8px 0 14px; }
+.pk { display: flex; align-items: center; gap: 10px; padding: 10px 4px; border-bottom: 1px solid var(--line); }
+.pk input { flex: none; width: 22px; height: 22px; margin: 0; accent-color: var(--accent); }
+.pk span { flex: 1; font-weight: 600; }
+.pk small { color: var(--muted); font-size: 12px; }
+.guide { margin-top: 16px; }
 
 /* ── ボタン */
 .primary, .ghost, .danger {
@@ -487,7 +561,7 @@ main {
 .tg { display: flex; align-items: center; gap: 10px; font-weight: 600; }
 .tg input { width: 22px; height: 22px; accent-color: var(--accent); margin: 0; }
 #lots { display: grid; gap: 6px; margin-bottom: 8px; }
-.lotrow { display: grid; grid-template-columns: 72px 1fr 40px; gap: 6px; align-items: center; }
+.lotrow { display: grid; grid-template-columns: 1fr 72px 40px; gap: 6px; align-items: center; }
 .lotrow input {
   width: 100%;
   min-width: 0;

@@ -4,7 +4,7 @@
    ・★消す控えは sb- で始まるものだけ。個人アプリは全部同じ住所に並んでいて、
      控えの置き場もほかのアプリと共有なので、全部消すと隣のアプリの控えまで消えます
    ・VERSION は 公開用を作る.py が中身から計算して書きかえます */
-var VERSION = 'sb-7ee2bb9d';
+var VERSION = 'sb-44cfb3f6';
 
 self.addEventListener('install', function () {
   self.skipWaiting();
