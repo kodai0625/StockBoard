@@ -81,10 +81,10 @@
     if (days == null) return '';
     if (days < 0) return -days + '日過ぎ';
     if (days === 0) return '今日まで';
-    if (days <= St.NEAR) return 'あと' + days + '日';
+    if (days <= St.NEAR) return '後' + days + '日';
     var m = Math.round(days / 30.4);
-    if (m < 24) return 'あと約' + m + 'か月';
-    return 'あと約' + Math.floor(days / 365) + '年';
+    if (m < 24) return '後約' + m + 'か月';
+    return '後約' + Math.floor(days / 365) + '年';
   }
 
   // 気にかける品（タブの数に出す）：ストックなし・期限切れ・期限が近い
@@ -198,9 +198,9 @@
   }
   function introHtml() {
     if (S.meta.introDone) return '';
-    return '<div class="intro"><b>はじめに</b><p>一般的な家庭によくある品を入れてあります。切らしたら「ストックなし」にチェックを入れてください。' +
+    return '<div class="intro"><b>初めに</b><p>一般的な家庭によくある品を入れてあります。切らしたら「ストックなし」にチェックを入れてください。' +
       'チェックした品と、買い出しの数を入れた品が「買い出し」に集まります。</p>' +
-      '<p>名前を直す・並べ替える・いらない品を消すときは、右上の「編集」を押します。</p>' +
+      '<p>名前を直す・並べ替える・要らない品を消すときは、右上の「編集」を押します。</p>' +
       '<button type="button" class="ghost sm" data-act="intro">わかった</button></div>';
   }
   function headHtml(cat) {
@@ -734,7 +734,7 @@
         '分類ごとに選んで足すときは、右上の「編集」から。</p>' +
         '<button type="button" class="ghost" id="seedBtn">よくある品を全部足す</button>' +
       '</section>' +
-      '<section class="set"><h4>しるしの意味</h4>' +
+      '<section class="set"><h4>印の意味</h4>' +
         '<ul class="legend">' +
           '<li><span class="bd out">ストックなし</span>切らしている品。買い出しに出ます</li>' +
           '<li><span class="bd over">期限切れ</span>期限を過ぎたものがある</li>' +
@@ -951,5 +951,5 @@
   }
 
   render();
-  if (upgraded) toast('よくある品を' + upgraded + '品足しました。いらない品は「編集」から消せます', upgradeSnap);
+  if (upgraded) toast('よくある品を' + upgraded + '品足しました。要らない品は「編集」から消せます', upgradeSnap);
 })();
