@@ -194,7 +194,7 @@
         '<span class="xn">' + esc(r.it.name) + (r.l.qty > 0 ? ' <b>' + fmt(r.l.qty) + esc(r.it.unit) + '</b>' : '') + '</span>' +
         '<span class="xd">' + dateLabel(r.l.exp) + '</span><span class="xl">' + daysLabel(r.d) + '</span></button>';
     }).join('') +
-      '<p class="hint">近いものからふだんの食事で使い、使った分を買い足しておくと無駄になりません。</p></div>';
+      '<p class="hint">近いものから普段の食事で使い、使った分を買い足しておくと無駄になりません。</p></div>';
   }
   function introHtml() {
     if (S.meta.introDone) return '';
