@@ -81,7 +81,7 @@
     if (days == null) return '';
     if (days < 0) return -days + '日過ぎ';
     if (days === 0) return '今日まで';
-    if (days <= St.NEAR) return '後' + days + '日';
+    if (days <= St.NEAR) return 'あと' + days + '日';
     var m = Math.round(days / 30.4);
     if (m < 24) return '後約' + m + 'か月';
     return '後約' + Math.floor(days / 365) + '年';
